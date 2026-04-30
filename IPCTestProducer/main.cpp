@@ -1,0 +1,92 @@
+#include <iostream>
+#include <filesystem>
+#include <chrono>
+
+#include "common.h"
+#include "shared_queue.h"
+
+
+void FillPayload(unsigned char *pPayload, size_t payloadSize)
+{
+    static unsigned char counter = 0;
+    for (size_t i = 0; i < payloadSize; ++i, ++counter)
+    {
+        pPayload[i] = counter;
+    }
+}
+
+void loop(size_t payloadSize)
+{
+    auto messageSize = sizeof(SMessageHeader) + payloadSize;
+    CSharedQueue sharedQueue(messageSize, true);
+    messageSize = sharedQueue.messageSize();
+    {
+        const auto actualPaylod = messageSize - sizeof(SMessageHeader);
+        if (actualPaylod != payloadSize)
+        {
+            sharedQueue.unlinkBuffer();
+            payloadSize = actualPaylod;
+            std::cout << "Shared buffer already initialized and has paylod size different from specified.\n";
+            std::cout << "Changing payload size in existing buffer is not supported (yet?), so using existing payload size.\n";
+            std::cout << "For new payload size please exit both producer and consumer and restart them\n";
+            std::cout << "Payload size == " << payloadSize << std::endl;
+        }
+    }
+
+    for (size_t messageNumber = 0; ; ++messageNumber)
+    {
+        while(sharedQueue.full()){} // spinlock for performance; [TODO] maybe try other options...
+        auto pNextMessage = sharedQueue.nextMessagePtr();
+
+        auto pHeader = reinterpret_cast<SMessageHeader*>(pNextMessage);
+        auto pPayload = pNextMessage + sizeof(SMessageHeader);
+
+        FillPayload(pPayload, payloadSize);
+        pHeader->checksum = SMessageHeader::CalculateChecksum(pPayload, payloadSize);
+        pHeader->sequenceNumber = messageNumber;
+        pHeader->timeStamp = SMessageHeader::GenerateTimestamp();
+
+        sharedQueue.push_back();
+    }
+}
+
+int main(int argc, char** argv)
+{
+    if (argc != 2)
+    {
+        const auto commandName = std::filesystem::path(argv[0]).stem().string();
+        std::cout << "Usage: " << commandName << " <payload size in bytes>" << std::endl;
+        return 0;
+    }
+
+    size_t payloadSize = 0;
+
+    try
+    {
+        payloadSize = std::stoul(argv[1]);
+    }
+    catch(std::out_of_range)
+    {
+        std::cout << "Error: payload size is out of range." << std::endl;
+        return 1;
+    }
+    catch(...)
+    {
+        std::cout << "Error: can't parse payload size" << std::endl;
+        return 1;
+    }
+
+    std::cout << "Payload size == " << payloadSize << std::endl;
+
+    if(const auto MessageSize = sizeof(SMessageHeader) + payloadSize;
+       MessageSize > CSharedQueueCore::QueueBufferSize)
+    {
+        const auto MaxPayload = CSharedQueueCore::QueueBufferSize - sizeof(SMessageHeader);
+        std::cout << "Payload must be between 0 and " << MaxPayload << std::endl;
+        return 1;
+    }
+
+    loop(payloadSize);
+
+    return 0;
+}
