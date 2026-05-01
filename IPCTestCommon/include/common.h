@@ -4,6 +4,9 @@
 #include <string_view>
 
 
+const auto PollInterval = std::chrono::microseconds(10);
+const auto SharedMemoryName = "IPCTestQueueSharedBuffer";
+
 typedef int64_t TTimestamp;
 typedef int64_t TSequenceNumber;
 typedef int64_t TChecksum;

@@ -11,7 +11,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(IPCTEST_COMMON_INCLUDE ${PROJECT_SOURCE_DIR}/IPCTestCommon/include)
 set(IPCTEST_COMMON_INCLUDE_FILES ${IPCTEST_COMMON_INCLUDE}/common.h
                                  ${IPCTEST_COMMON_INCLUDE}/queue.h
-                                 ${IPCTEST_COMMON_INCLUDE}/shared_queue.h)
+                                 ${IPCTEST_COMMON_INCLUDE}/shared_queue.h
+                                 ${IPCTEST_COMMON_INCLUDE}/signal_handlers.h
+                                 ${IPCTEST_COMMON_INCLUDE}/instance_locker.h)
 
 add_subdirectory(IPCTestProducer)
 add_subdirectory(IPCTestConsumer)

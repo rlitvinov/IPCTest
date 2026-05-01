@@ -1,12 +1,22 @@
 #include <iostream>
 
 #include "common.h"
+#include "instance_locker.h"
 #include "shared_queue.h"
+#include "signal_handlers.h"
 #include "statistics_printer.h"
+
+namespace
+{
+    const auto InstanceSemaphoreName = "IPCTestConsumerInstance";
+}
 
 void loop()
 {
-    CSharedQueue sharedQueue(0, false);
+    CSharedQueue sharedQueue(SharedMemoryName, 0, false);
+
+    if (CSignalHandlers::isExitRequested())
+        return;
 
     const auto MessageSize = sharedQueue.messageSize();
     const auto PayloadSize = MessageSize - sizeof(SMessageHeader);
@@ -19,7 +29,28 @@ void loop()
 
     for (size_t messageCount = 0; ; ++messageCount)
     {
-        while(sharedQueue.empty()){} // spinlock for performance; [TODO] maybe try other options...
+        while(sharedQueue.empty()) // spinlock for performance; [TODO] maybe try other options...
+        {
+            if (CSignalHandlers::isExitRequested())
+                break;
+        }
+
+        if (CSignalHandlers::isPauseRequested())
+        {
+            std::cout << "Pausing..." << std::endl;
+            while (CSignalHandlers::isPauseRequested() && !CSignalHandlers::isExitRequested())
+            {
+                std::this_thread::sleep_for(PollInterval); // [TODO] make better wait (conditional variable?)
+            }
+            std::cout << "Resuming..." << std::endl;
+        }
+
+        if (CSignalHandlers::isExitRequested())
+        {
+            std::cout << "Exiting..." << std::endl;
+            break;
+        }
+
         const auto pFrontMessage = sharedQueue.frontMessagePtr();
 
         const auto pHeader = reinterpret_cast<SMessageHeader*>(pFrontMessage);
@@ -46,6 +77,14 @@ void loop()
 
 int main()
 {
+    CInstanceLocker instanceLocker(InstanceSemaphoreName);
+
+    if (!instanceLocker.isLocked())
+    {
+        std::cout << "Only one instance of IPCTestConsumer can be running" << std::endl;
+        return 1;
+    }
+
     std::cout << "Consumer starting..." << std::endl;
     loop();
     return 0;

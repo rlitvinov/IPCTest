@@ -1,9 +1,14 @@
-#include <iostream>
 #include <filesystem>
-#include <chrono>
+#include <iostream>
 
 #include "common.h"
+#include "instance_locker.h"
 #include "shared_queue.h"
+
+namespace
+{
+    const auto InstanceSemaphoreName = "IPCTestProducerInstance";
+}
 
 
 void FillPayload(unsigned char *pPayload, size_t payloadSize)
@@ -18,7 +23,7 @@ void FillPayload(unsigned char *pPayload, size_t payloadSize)
 void loop(size_t payloadSize)
 {
     auto messageSize = sizeof(SMessageHeader) + payloadSize;
-    CSharedQueue sharedQueue(messageSize, true);
+    CSharedQueue sharedQueue(SharedMemoryName, messageSize, true);
     messageSize = sharedQueue.messageSize();
     {
         const auto actualPaylod = messageSize - sizeof(SMessageHeader);
@@ -35,7 +40,28 @@ void loop(size_t payloadSize)
 
     for (size_t messageNumber = 0; ; ++messageNumber)
     {
-        while(sharedQueue.full()){} // spinlock for performance; [TODO] maybe try other options...
+        while(sharedQueue.full()) // spinlock for performance; [TODO] maybe try other options...
+        {
+            if (CSignalHandlers::isExitRequested())
+                break;
+        }
+
+        if (CSignalHandlers::isPauseRequested())
+        {
+            std::cout << "Pausing..." << std::endl;
+            while (CSignalHandlers::isPauseRequested() && !CSignalHandlers::isExitRequested())
+            {
+                std::this_thread::sleep_for(PollInterval); // [TODO] make better wait (conditional variable?)
+            }
+            std::cout << "Resuming..." << std::endl;
+        }
+
+        if (CSignalHandlers::isExitRequested())
+        {
+            std::cout << "Exiting..." << std::endl;
+            break;
+        }
+
         auto pNextMessage = sharedQueue.nextMessagePtr();
 
         auto pHeader = reinterpret_cast<SMessageHeader*>(pNextMessage);
@@ -52,6 +78,16 @@ void loop(size_t payloadSize)
 
 int main(int argc, char** argv)
 {
+    CInstanceLocker instanceLocker(InstanceSemaphoreName);
+
+    if (!instanceLocker.isLocked())
+    {
+        std::cout << "Only one instance of IPCTestProducer can be running" << std::endl;
+        return 1;
+    }
+
+    std::cout << "Producer starting..." << std::endl;
+
     if (argc != 2)
     {
         const auto commandName = std::filesystem::path(argv[0]).stem().string();
