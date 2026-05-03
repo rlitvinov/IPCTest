@@ -76,17 +76,11 @@ public:
         }
     }
 
-    unsigned char *frontMessagePtr() const
-    { return m_pSharedBuffer + QueueDataBufferOffset + queue().frontMessageOffset(); }
-
-    unsigned char *nextMessagePtr ()
-    { return m_pSharedBuffer + QueueDataBufferOffset + queue().nextMessageOffset(); }
-
     auto messageSize() const { return queue().messageSize(); }
-    auto empty() const { return queue().empty(); }
-    auto full() const { return queue().full(); }
-    void pop_front() { queue().pop_front(); }
-    void push_back() { queue().push_back(); }
+
+    unsigned char *queueDataPtr() { return m_pSharedBuffer + QueueDataBufferOffset; }
+    auto getPusher() { return queue().getPusher(); }
+    auto getPopper() { return queue().getPopper(); }
 
     void unlinkBuffer() const { shm_unlink(m_sharedMemoryName.c_str()); }
 

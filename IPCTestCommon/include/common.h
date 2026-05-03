@@ -2,7 +2,7 @@
 
 #include <chrono>
 #include <string_view>
-
+#include <numeric>
 
 const auto PollInterval = std::chrono::microseconds(10);
 const auto SharedMemoryName = "IPCTestQueueSharedBuffer";
@@ -19,14 +19,14 @@ struct __attribute__((packed)) SMessageHeader
 
     static TChecksum CalculateChecksum(unsigned char *pPayload, size_t payloadSize)
     {
-        return std::hash<std::string_view>()(std::string_view(reinterpret_cast<char*>(pPayload), payloadSize)); // [TODO] Maybe try something faster...
+        //return std::hash<std::string_view>()(std::string_view(reinterpret_cast<char*>(pPayload), payloadSize));
+        return std::accumulate(pPayload, pPayload + payloadSize, 0);// checksum calculation is significantly impacting performance
+                                                                    // so reverted to the literal sum
     }
 
-    static TTimestamp GenerateTimestamp() // microseconds since the epoch
+    static TTimestamp GenerateTimestamp() // timestamp generation was taking significant time, especially for small payloads,
+                                          // so changed to rdtsc
     {
-        using namespace std::chrono;
-
-        microseconds us = duration_cast<microseconds>(system_clock::now().time_since_epoch());
-        return us.count();
+        return __rdtsc();
     }
 };

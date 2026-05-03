@@ -12,8 +12,11 @@ void CStatisticsPrinter::updateAndPrint(size_t totalMessagesReceived, TTimestamp
     std::cout << totalMessagesReceived << " total messages received\n";
     std::cout << static_cast<size_t>(messagesPerSecond) << " messages/sec\n";
     std::cout << static_cast<size_t>(bytesPerSecond) << " bytes/sec\n";
+    std::cout << "Errors: Checksum: "  << m_checksumMismatches << ", Out of order: " << m_outOfOrderMessages << '\n';
     std::cout << std::endl;
 
     m_timestamp = newTimestamp;
     m_messagesReceived = totalMessagesReceived;
+    m_checksumMismatches = 0;
+    m_outOfOrderMessages = 0;
 }

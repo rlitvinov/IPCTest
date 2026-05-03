@@ -27,13 +27,11 @@ void loop()
 
     CStatisticsPrinter statPrinter(MessageSize);
 
+    auto popper = sharedQueue.getPopper();
+
     for (size_t messageCount = 0; ; ++messageCount)
     {
-        while(sharedQueue.empty()) // spinlock for performance; [TODO] maybe try other options...
-        {
-            if (CSignalHandlers::isExitRequested())
-                break;
-        }
+        popper.wait([](){ return CSignalHandlers::isExitRequested(); });
 
         if (CSignalHandlers::isPauseRequested())
         {
@@ -51,7 +49,7 @@ void loop()
             break;
         }
 
-        const auto pFrontMessage = sharedQueue.frontMessagePtr();
+        const auto pFrontMessage = sharedQueue.queueDataPtr() + popper.dataOffset();
 
         const auto pHeader = reinterpret_cast<SMessageHeader*>(pFrontMessage);
         const auto pPayload = pFrontMessage + sizeof(SMessageHeader);
@@ -59,19 +57,19 @@ void loop()
         if (auto calculatedChecksum = SMessageHeader::CalculateChecksum(pPayload, PayloadSize);
             calculatedChecksum != pHeader->checksum)
         {
-            std::cout << "Checksum mismatch: header: " << pHeader->checksum << ", calculated: " << calculatedChecksum << std::endl;
+            statPrinter.checksumMismatch();
         }
 
         if ((messageCount > 0) && (prevSequenceNumber != pHeader->sequenceNumber - 1))
         {
-            std::cout << "Sequence number out of order: " << prevSequenceNumber << ", " << pHeader->sequenceNumber << std::endl;
+            statPrinter.outOfOrderMessage();
         }
 
         statPrinter.update(messageCount);
 
         prevSequenceNumber = pHeader->sequenceNumber;
 
-        sharedQueue.pop_front();
+        popper.pop();
     }
 }
 

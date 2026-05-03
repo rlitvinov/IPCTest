@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
 
@@ -14,10 +15,10 @@ namespace
 void FillPayload(unsigned char *pPayload, size_t payloadSize)
 {
     static unsigned char counter = 0;
-    for (size_t i = 0; i < payloadSize; ++i, ++counter)
-    {
-        pPayload[i] = counter;
-    }
+
+    std::generate(pPayload, pPayload + payloadSize, [](){ return counter++; });
+
+    ++counter;
 }
 
 void loop(size_t payloadSize)
@@ -38,13 +39,11 @@ void loop(size_t payloadSize)
         }
     }
 
+    auto pusher = sharedQueue.getPusher();
+
     for (size_t messageNumber = 0; ; ++messageNumber)
     {
-        while(sharedQueue.full()) // spinlock for performance; [TODO] maybe try other options...
-        {
-            if (CSignalHandlers::isExitRequested())
-                break;
-        }
+        pusher.wait([](){ return CSignalHandlers::isExitRequested(); });
 
         if (CSignalHandlers::isPauseRequested())
         {
@@ -62,7 +61,7 @@ void loop(size_t payloadSize)
             break;
         }
 
-        auto pNextMessage = sharedQueue.nextMessagePtr();
+        auto pNextMessage = sharedQueue.queueDataPtr() + pusher.dataOffset();
 
         auto pHeader = reinterpret_cast<SMessageHeader*>(pNextMessage);
         auto pPayload = pNextMessage + sizeof(SMessageHeader);
@@ -72,7 +71,11 @@ void loop(size_t payloadSize)
         pHeader->sequenceNumber = messageNumber;
         pHeader->timeStamp = SMessageHeader::GenerateTimestamp();
 
-        sharedQueue.push_back();
+        // [!] [debug]
+        //if ((messageNumber & ((1 << 10) - 1)) == 0)
+        //    pPayload[payloadSize - 1] = 1;
+
+        pusher.push();
     }
 }
 
